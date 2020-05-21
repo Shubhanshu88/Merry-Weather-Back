@@ -1,0 +1,30 @@
+{
+  "name": "merry-weather-back",
+  "version": "1.0.0",
+  "description": "backend for merry-weather",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "npx supervisor index.js",
+    "start": "node index.js"
+  },
+  "author": "subg",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.19.0",
+    "body-parser": "^1.19.0",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "ejs": "^2.7.1",
+    "express": "^4.17.1",
+    "express-rate-limit": "^5.0.0",
+    "helmet": "^3.21.2",
+    "winston": "^3.2.1"
+  },
+  "engines": {
+    "node": "10.x"
+  },
+  "devDependencies": {
+    "eslint-plugin-security": "^1.4.0"
+  }
+}
