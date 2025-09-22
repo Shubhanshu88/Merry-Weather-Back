@@ -8,6 +8,8 @@ var winston = require('winston');
 var cors = require('cors');
 var RateLimit = require('express-rate-limit');
 
+require('dotenv').config()
+
 var app = express();
 
 app.use(bodyParser.json());
@@ -30,7 +32,7 @@ app.use(helmet({
   frameguard: false,
 }));
 
-var apiLimiter = new RateLimit({
+var apiLimiter = RateLimit.rateLimit({
   windowMs: 60 * 1000,
   max: 20,
 });
@@ -41,14 +43,24 @@ var logger = winston.createLogger({
   ]
 });
 
+const printCustomLog = (lvl, logStr, logMetaData) => {
+  logger.log(lvl, logStr, logMetaData);
+}
+
 app.use(apiLimiter);
+
+const nominatinCustomHeaders = {
+  headers: {
+    "User-Agent": "merry-weather"
+  }
+};
 
   app.get('/mapshow/minimap', (req,res) => {
   if(req.query['placeName']) {
     //Initial request for geocoding
-    axios.get('https://nominatim.openstreetmap.org/search?q=' + req.query['placeName'] + '&format=geocodejson&limit=1')
+    axios.get('https://nominatim.openstreetmap.org/search?q=' + req.query['placeName'] + '&format=geocodejson&limit=1', nominatinCustomHeaders)
     .then((response) => {
-      logger.log('info', 'New city Geocoding data received', {timestamp: Date.now(), pid: process.pid});
+      printCustomLog('info', 'New city Geocoding data received', {timestamp: Date.now(), pid: process.pid});
       let citycoords = {
         lat: response.data.features[0].geometry.coordinates[1],
         long: response.data.features[0].geometry.coordinates[0],
@@ -56,9 +68,9 @@ app.use(apiLimiter);
         placeLabel: response.data.features[0].properties.geocoding.label,
         placeType: response.data.features[0].properties.geocoding.type
       };
-      logger.log('info', 'Lat:' +citycoords.lat+ 'Long:' + citycoords.long, {timestamp: Date.now(), pid: process.pid});
+      printCustomLog('info', 'Lat:' +citycoords.lat+ 'Long:' + citycoords.long, {timestamp: Date.now(), pid: process.pid});
       if(citycoords.lat !== undefined && citycoords.long !== undefined) {     
-        axios.get('https://api.darksky.net/forecast/' + process.env.API_KEY + '/' + citycoords.lat + ',' + citycoords.long)
+        axios.get(process.env.BASE_WEATHER_API_URL + '/forecast/' + process.env.API_KEY + '/' + citycoords.lat + ',' + citycoords.long)
         .then((resp) => {
           console.log(citycoords.placeName + 'is here');
           console.log(typeof(citycoords.placeName));
@@ -89,8 +101,8 @@ app.use(apiLimiter);
       
     }).catch((err) => {
       console.log(err);
-      logger.log('info', err, {timestamp: Date.now(), pid: process.pid});
-      logger.log('info', 'Name is ' + err.errno, {timestamp: Date.now(), pid: process.pid});
+      printCustomLog('info', err, {timestamp: Date.now(), pid: process.pid});
+      printCustomLog('info', 'Name is ' + err.errno, {timestamp: Date.now(), pid: process.pid});
       var str = ejs.renderFile('./views/simple.ejs');
       str.then((data) => {
         res.send(data);
@@ -99,13 +111,13 @@ app.use(apiLimiter);
 }});
 
 app.get('/darksky', (req,res) => {
-  logger.log('info', 'Post request received', {timestamp: Date.now(), pid: process.pid, route:'/darksky'});
-  axios.get('https://api.darksky.net/forecast/' + process.env.API_KEY +' /29,75')
+  printCustomLog('info', 'Post request received', {timestamp: Date.now(), pid: process.pid, route:'/darksky'});
+  axios.get(process.env.BASE_WEATHER_API_URL + '/forecast/' + process.env.API_KEY +' /29,75')
   .then((response) => {
     res.json(response.data);
   })
   .catch((err) => {
-    logger.log('info', err, {timestamp: Date.now(), pid: process.pid, route:'/darksky'});
+    printCustomLog('info', err, {timestamp: Date.now(), pid: process.pid, route:'/darksky'});
   });
 });
 
@@ -113,11 +125,11 @@ app.get('/darksky', (req,res) => {
 app.get('/initial', (req,res) => {
   // Initially using Reverse Geocoding api to find place of user (paid)
   // Now using Nominatin
-  logger.log('info', 'City request received' + req.query['lat'] + req.query['long'], {timestamp: Date.now(), pid: process.pid, route: '/initial'});
+  printCustomLog('info', 'City request received' + req.query['lat'] + req.query['long'], {timestamp: Date.now(), pid: process.pid, route: '/initial'});
   if(req.query['lat'] && req.query['long']) {
     axios.all([
-      axios.get('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + req.query['lat'] + '&lon=' + req.query['long']),
-      axios.get('https://api.darksky.net/forecast/' + process.env.API_KEY + '/' + req.query['lat'] + ',' + req.query['long'])
+      axios.get('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + req.query['lat'] + '&lon=' + req.query['long'], nominatinCustomHeaders),
+      axios.get(process.env.BASE_WEATHER_API_URL + '/forecast/' + process.env.API_KEY + '/' + req.query['lat'] + ',' + req.query['long'])
     ])
     .then((respArr) => {
       res.json({ 
@@ -128,12 +140,12 @@ app.get('/initial', (req,res) => {
           placeName: respArr[0].data.address.city,
         } });
     }).catch((err) => {
-      logger.log('info', err, {timestamp: Date.now(), pid: process.pid, route:'/initial'});
+      printCustomLog('info', err, {timestamp: Date.now(), pid: process.pid, route:'/initial'});
       console.log(err);
       return err;
     });
   } else {
-    logger.log('info', 'No lat or long in req header', {timestamp: Date.now(), pid: process.pid, route:'/initial'});
+    printCustomLog('info', 'No lat or long in req header', {timestamp: Date.now(), pid: process.pid, route:'/initial'});
     let error = new Error('No lat or long in request header');
     res.send(error);
   }
@@ -144,7 +156,7 @@ app.get('/changeplace', (req,res) => {
   console.log(JSON.stringify(req.headers.origin));
   if(req.query['place']) {
     //Initial request for geocoding
-    axios.get('https://nominatim.openstreetmap.org/search?q=' + req.query['place'] + '&format=geocodejson&limit=1')
+    axios.get('https://nominatim.openstreetmap.org/search?q=' + req.query['place'] + '&format=geocodejson&limit=1', nominatinCustomHeaders)
     .then((response) => {
       console.log('New city Geocoding data received');
       if(Object.keys(response.data.features).length === 0) {
@@ -163,8 +175,8 @@ app.get('/changeplace', (req,res) => {
         console.log('Lat:' +citycoords.lat+ 'Long:' + citycoords.long);
 
         // Second request to dark sky if citycoords are not undefined
-        if(citycoords.lat !== undefined) {     
-          axios.get('https://api.darksky.net/forecast/' + process.env.API_KEY + '/' + citycoords.lat + ',' + citycoords.long)
+        if(citycoords.lat !== undefined && citycoords.long != undefined) {     
+          axios.get(process.env.BASE_WEATHER_API_URL + '/forecast/' + process.env.API_KEY + '/' + citycoords.lat + ',' + citycoords.long)
           .then((resp) => {
             res.json({ weather: resp.data, geocode: citycoords });
           })
@@ -186,8 +198,13 @@ app.get('/changeplace', (req,res) => {
     res.send(errr);
   }
 });
+// sample change
 
-// Change to http if req.socket aint available and rateLimiter doesnt work correctly
-app.listen(process.env.PORT || 5000, (req,res) => {
-  console.log("Server running on port 5000");
-});
+printCustomLog("info", "server is " + process.env.SHOULD_START_SERVER, "metadata")
+
+if(process.env.SHOULD_START_SERVER == "true") {
+  // Change to http if req.socket aint available and rateLimiter doesnt work correctly
+  app.listen(process.env.PORT || 5000, (req,res) => {
+    console.log("Server running on port 5000");
+  });
+}
